@@ -1,9 +1,7 @@
-(defproject klipse "7.5.0"
+(defproject klipse "7.6.0"
   :description "Embeddable multi-language WEB REPL"
   :resource-paths ["scripts" "src" "resources" "target"]
-  :clean-targets ^{:protect false} ["resources/public/dev/js"
-                                    "resources/public/plugin_prod/js"
-                                    "resources/public/plugin/js"]
+  :clean-targets ^{:protect false} ["resources/public/dev/js"]
   :min-lein-version "2.8.1"
   :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
   :lein-tools-deps/config {:config-files [:install :user :project]}
@@ -29,32 +27,4 @@
                                                              (re-seq #"\".*\"")
                                                              (first))}
                                         :optimizations :simple
-                                        :verbose false}}
-                       :plugin {
-                                :source-paths ["src/klipse/run/plugin"]
-                                :compiler {
-                                           :output-to "resources/public/plugin/js/klipse_plugin.js"
-                                           :output-dir "resources/public/plugin/js"
-                                           :pretty-print false
-                                           :optimize-constants true
-                                           :static-fns true
-                                           ;:elide-asserts true
-                                           :closure-defines {klipse.core/version
-                                                             ~(->> (slurp "project.clj")
-                                                                (re-seq #"\".*\"")
-                                                                (first))}
-                                           :optimizations :simple
-                                           :verbose false}}
-                       :plugin-prod {
-                                     :source-paths ["src/klipse/run/plugin_prod"]
-                                     :compiler {
-                                                :output-to "resources/public/plugin_prod/js/klipse_plugin.min.js"
-                                                :output-dir "resources/public/plugin_prod/js"
-                                                :pretty-print true
-                                                :elide-asserts false
-                                                :optimizations :advanced
-                                                :closure-defines {klipse.core/version
-                                                                  ~(->> (slurp "project.clj")
-                                                                     (re-seq #"\".*\"")
-                                                                     (first))}
-                                                :verbose true}}}})
+                                        :verbose false}}}})
