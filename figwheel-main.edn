@@ -1,0 +1,3 @@
+{:ring-server-options {:port 5016}
+ :open-url "http://localhost:5016/index-dbg.html"
+ :load-warninged-code true}
