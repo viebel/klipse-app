@@ -2,5 +2,5 @@
 Clojure[script] REPL online
 
 ```bash
-clj -A:figwheel --build dev --repl
+clojure -A:figwheel --build dev --repl
 ```
