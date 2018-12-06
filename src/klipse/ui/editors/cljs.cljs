@@ -48,7 +48,7 @@
   (handle-events editor
                  {:idle-msec 3000
                   :on-change #(save-input component (get-value editor))
-                  :on-tab #(trigger-autocomplete editor (completions (current-token editor)))
+                  :on-completion #(trigger-autocomplete editor (completions (current-token editor)))
                   :on-should-eval #(process-input component (get-selection-when-selected editor))}))
 
 (defmulti use-editor-mode! (fn [mode _]  mode))

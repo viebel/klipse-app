@@ -25,15 +25,6 @@
 (defn get-selection [editor]
   (.getSelection editor))
 
-(defn get-cursor [editor]
-  (.getCursor editor))
-
-(defn find-word-at [editor cursor]
-  (.findWordAt editor cursor))
-
-(defn get-range [editor from to]
-  (.getRange editor from to))
-
 (defn get-selection-or-nil [editor]
   (let [s (get-selection editor)]
     (if (blank? s)
