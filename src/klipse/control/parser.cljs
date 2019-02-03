@@ -6,7 +6,7 @@
    gadjett.core-fn
    [cljs.reader :refer [read-string]]
    [klipse.utils :refer [add-url-parameter url-parameters verbose?]]
-   [klipse-clj.lang.clojure :refer [eval-async compile-async]]
+   [klipse-clj.lang.clojure :refer [eval-async-map compile-async]]
    [om.next :as om]))
 
 ;; =============================================================================
@@ -35,14 +35,15 @@
 
 (deftrack eval-clj [s]
   (go
-    (let [[status res] (<! (eval-async s {:static-fns (static-fns?)
-                                          :verbose (verbose?)
-                                          :beautify-strings (beautify-strings?)
-                                          :external-libs (external-libs)
-                                          :max-eval-duration (max-eval-duration)
-                                          :print-length (print-length)
-                                          :context (eval-context?)}))]
-      [status res])))
+    (let [{:keys [warnings res]} (<! (eval-async-map s {:static-fns (static-fns?)
+                                                        :verbose (verbose?)
+                                                        :beautify-strings (beautify-strings?)
+                                                        :external-libs (external-libs)
+                                                        :max-eval-duration (max-eval-duration)
+                                                        :print-length (print-length)
+                                                        :context (eval-context?)}))
+          [status result] res]
+      [status (str warnings result)])))
 
 
 ;; =============================================================================
