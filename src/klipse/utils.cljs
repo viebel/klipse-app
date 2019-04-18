@@ -1,5 +1,4 @@
 (ns klipse.utils
-  (:use-macros [purnam.core :only [? ! !>]])
   (:require-macros
    [gadjett.core :refer [dbg]]
    [cljs.core.async.macros :refer [go go-loop]])
@@ -12,7 +11,7 @@
 
 
 (defn current-url []
-  (if-let [loc (if (exists? js/location) js/location "")]
+  (if-let [loc (if-not (nil? js/location) js/location "")]
     (url (aget loc "href"))))
 
 (defn url-parameters* []
@@ -78,20 +77,6 @@
         (reset! ran true)
         (apply f args)))))
 
-(defn runonce-async
-  "Returns a function that will run `f` only once.
-  If `f` succeeds (returns [:ok & args]), on subsequent calls it will return [:ok].
-  `f` must return a channel."
-  [f]
-  (let [ran (atom false)]
-    (fn [& args]
-      (go
-        (if-not @ran
-          (let [res (<! (apply f args))]
-            (when (= :ok (first res))
-              (reset! ran true))
-            res)
-          [:ok])))))
 
 (defn memoize-async
   "Returns a memoized version of f.
@@ -108,68 +93,30 @@
             res)
           (get @ran args))))))
 
-(defn default-permitted-symbols []
-                                        ; it doesn't work with setTimeout and setInterval
-                                        ; in Firefox, it causes this error: TypeError: 'setTimeout' called on an object that does not implement interface Window.
-  ["console" "setTimeout" "setInterval" "Math" "Date"])
 
-(defn default-forbidden-symbols []
-  ["document" "XMLHttpRequest" "eval" "window" "Function"])
-
-(comment (default-forbidden-symbols))
-(def secured-eval false)
 (def eval-in-global-scope js/eval) ; this is the trick to make `eval` work in the global scope: http://perfectionkills.com/global-eval-what-are-the-options/
                                    ; if we make it a function (defn eval-in-global-scope[x] (js/eval x)) - code is not shared properly between javascript snippets - see https://github.com/viebel/klipse/issues/246#issue-214278867
 
-(defn securize-eval!* [the-forbidden-symbols]
-                                        ;inspired by https://blog.risingstack.com/writing-a-javascript-framework-sandboxed-code-evaluation/
-  (set! secured-eval true)
-  (let [original-eval js/eval]
-    (! js/window.eval (fn [src]
-                        (original-eval (str "with (klipse_eval_sandbox){ " src "}"))))
-    (set! eval-in-global-scope js/eval)
-    (! js/window.klipse_unsecured_eval original-eval)
-    (! js/window.klipse_eval_sandbox (clj->js (zipmap the-forbidden-symbols (repeat {}))))
-    #_(set! js/klipse-eval-sandbox (clj->js (zipmap (js/Object.getOwnPropertyNames js/window) (repeat {}))))
-    #_(doseq [sym permitted-symbols]
-      (aset js/klipse-eval-sandbox sym (aget js/window sym)))))
 
-(def securize-eval! (runonce securize-eval!*))
-
-(defn setup-container! [container-id]
-  (when-not secured-eval
-    ;; it is not safe to give access to the DOM
-    ;; think about klipse_container.innerHTML='<a href="http://google.com">google</a>';
-    (aset js/window "klipse_container" (js/document.getElementById container-id))
-    (aset js/window "klipse_container_id" container-id)))
-
-(defn unsecured-eval-in-global-scope [s]
-  ((or (? js/window.klipse_unsecured_eval) js/eval) s)) ; we have to use the unsecured eval because external scripts usually manipulate the DOM!
-                                        ;this is the trick to make `eval` work in the global scope: http://perfectionkills.com/global-eval-what-are-the-options/
-
-
-
-(defn load-script [script & {:keys [secured-eval?] :or {secured-eval? false}}]
+(defn load-script [script & _]
   (go
     (js/console.info "loading:" script)
     (let [{:keys [status body]} (<! (http/get script {:with-credentials? false}))]
       (if (= 200 status)
         (do
           (js/console.info "evaluating:" script)
-          (if secured-eval?
-            (eval-in-global-scope body)
-            (unsecured-eval-in-global-scope body))
+          (eval-in-global-scope body)
           (js/console.info "evaluation done:" script)          
           [:ok script])
         [status script]))))
 
 (def load-script-mem (memoize-async load-script))
 
-(defn load-scripts [scripts & {:keys [secured-eval?] :or {secured-eval? false}}]
+(defn load-scripts [scripts & _]
   (go-loop [the-scripts scripts]
     (if (seq the-scripts)
       (let [script (str (first the-scripts))
-            [status script] (<! (load-script-mem script :secured-eval? secured-eval?))]
+            [status script] (<! (load-script-mem script :secured-eval? false))]
         (if (= :ok status)
           (recur (rest the-scripts)))
         [status script])
@@ -181,23 +128,10 @@
   (boolean (read-string (or (:verbose (url-parameters)) "false"))))
 
 (defn klipse-settings* []
-  (let [w (if (exists? js/window) js/window #js {})]
+  (let [w (if-not (nil? js/window) js/window #js {})]
     (->
       (aget w "klipse_settings")
       (js->clj :keywordize-keys true))))
 
 (def klipse-settings (memoize klipse-settings*))
 
-(defn add-script-tag! [url ]
-  (let [c (chan)]
-    (let [node (js/document.createElement "script")
-          body (aget js/document "body")]
-      (aset node "src" url)
-      (aset node "onerror" #(put! c [:error url]))      
-      (aset node "onload" #(put! c [:ok url]))
-      (aset node "type" "text/javascript")
-      (!> body.appendChild node)
-      c)))
-
-
-(def add-script-tag-once! (runonce add-script-tag!))

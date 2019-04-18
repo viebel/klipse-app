@@ -1,7 +1,6 @@
 (ns klipse.ui.editors.editor
   (:use-macros
-   [gadjett.core :only [dbg]]
-   [purnam.core :only [? ! !>]])
+   [gadjett.core :only [dbg]])
   (:require
    [goog.dom :as gdom]
    [klipse.dom-utils :refer [create-div-after add-class]]
@@ -10,7 +9,8 @@
    cljsjs.codemirror.addon.edit.matchbrackets
    cljsjs.codemirror.addon.edit.closebrackets
    cljsjs.codemirror.addon.hint.show-hint
-   [clojure.string :refer [blank?]]))
+   [clojure.string :refer [blank?]]
+   [applied-science.js-interop :as j]))
 
 (def code-mirror js/CodeMirror)
 
@@ -56,10 +56,6 @@
 
 (defmethod beautify-language :default [editor _] editor)
 
-(defmethod beautify-language "text/x-sql" [editor _]
-  (->> (get-value editor)
-       (!> js/sqlFormatter.format)
-       (set-value editor)))
 
 (defn fix-comments-lines [editor mode]
   (if (= "clojure" mode)
@@ -69,8 +65,8 @@
     editor))
 
 (defn do-indent [editor]
-  (!> editor.operation #(dotimes [line (!> editor.lineCount)]
-                          (!> editor.indentLine line "smart")))
+  (j/call editor :operation #(dotimes [line (j/call editor :lineCount)]
+                               (j/call editor :indentLine line "smart")))
   editor)
 
 (defn beautify [editor mode {:keys [indent? remove-ending-comments?]}]
