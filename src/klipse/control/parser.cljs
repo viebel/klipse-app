@@ -1,37 +1,45 @@
 (ns klipse.control.parser
+  (:require [cljs.reader :refer [read-string]]
+            gadjett.core-fn
+            [klipse.utils :refer [add-url-parameter url-parameters verbose?]]
+            [klipse-clj.lang.clojure :refer [compile-async eval-async-map]]
+            [om.next :as om])
   (:require-macros
-   [gadjett.core :as gadjett :refer [deftrack dbg]]
-   [cljs.core.async.macros :refer [go]])
-  (:require 
-   gadjett.core-fn
-   [cljs.reader :refer [read-string]]
-   [klipse.utils :refer [add-url-parameter url-parameters verbose?]]
-   [klipse-clj.lang.clojure :refer [eval-async-map compile-async]]
-   [om.next :as om]))
+   [cljs.core.async.macros :refer [go]]
+   [gadjett.core :as gadjett :refer [dbg deftrack]]))
 
 ;; =============================================================================
 ;; Utils
+(defn safe-read-string [s]
+  (try (read-string s)
+       (catch js/Object _
+         s)))
 
 (defn static-fns? []
-  (boolean (read-string (or (:static-fns (url-parameters)) "false"))))
+  (boolean (safe-read-string (or (:static-fns (url-parameters)) "false"))))
 
 (defn compile-display-guard? []
-  (boolean (read-string (or (:compile-display-guard (url-parameters)) "false"))))
+  (boolean (safe-read-string (or (:compile-display-guard (url-parameters)) "false"))))
 
 (defn beautify-strings? []
-  (boolean (read-string (or (:beautify-strings (url-parameters)) "false"))))
+  (boolean (safe-read-string (or (:beautify-strings (url-parameters)) "false"))))
 
 (defn eval-context? []
-  (keyword (read-string (or (:eval-context (url-parameters)) "nil"))))
+  (keyword (safe-read-string (or (:eval-context (url-parameters)) "nil"))))
 
-(defn external-libs []
-  (map str (read-string (or (:external-libs (url-parameters)) "[]"))))
+
+(defn external-libs
+  "Collection of paths to look for external dependencies.
+  The external libs must be a vector of strings e.g. [\"https://raw.githubusercontent.com/vvvvalvalval/scope-capture/master/src\"]
+  See for instance https://raw.githubusercontent.com/vvvvalvalval/scope-capture/master/src"
+  []
+  (safe-read-string (or (:external-libs (url-parameters)) "[]")))
 
 (defn max-eval-duration []
-  (read-string (or (:max-eval-duration (url-parameters) "nil"))))
+  (safe-read-string (or (:max-eval-duration (url-parameters) "nil"))))
 
 (defn print-length []
-  (read-string (or (:print-length (url-parameters)) "1000")))
+  (safe-read-string (or (:print-length (url-parameters)) "1000")))
 
 (deftrack eval-clj [s]
   (go
