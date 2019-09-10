@@ -1,4 +1,6 @@
 .cpcache/
 target/
+.nrepl-port
+pom.xml
 resources/public/dev
 *-init.clj
