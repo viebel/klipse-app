@@ -1,12 +1,10 @@
 (ns klipse.control.parser
   (:require [cljs.reader :refer [read-string]]
-            gadjett.core-fn
-            [klipse.utils :refer [add-url-parameter url-parameters verbose?]]
-            [klipse-clj.lang.clojure :refer [compile-async eval-async-map]]
-            [om.next :as om])
+            [klipse.utils :refer [url-parameters verbose?]]
+            [cljs.core.async :refer [<!]]
+            [klipse-clj.lang.clojure :refer [compile-async eval-async-map]])
   (:require-macros
-   [cljs.core.async.macros :refer [go]]
-   [gadjett.core :as gadjett :refer [dbg deftrack]]))
+   [cljs.core.async.macros :refer [go]]))
 
 ;; =============================================================================
 ;; Utils
@@ -41,7 +39,7 @@
 (defn print-length []
   (safe-read-string (or (:print-length (url-parameters)) "1000")))
 
-(deftrack eval-clj [s]
+(defn eval-clj [s]
   (go
     (let [{:keys [warnings res]} (<! (eval-async-map s {:static-fns (static-fns?)
                                                         :verbose (verbose?)
@@ -54,41 +52,27 @@
       [status (str warnings result)])))
 
 
-;; =============================================================================
-;; Reads
+(defn save-editor-input! [state value]
+  (swap! state assoc-in [:input :input] value))
 
-(defn read [{:keys [state]} key params]
-  {:value (get @state key "")})
+(defn consume-editor-mode! [state value]
+  (swap! state update-in [:input :editor-modes] rest)
+  (swap! state assoc-in [:input :editor-mode] value))
 
+(defn set-editor-mode! [state value]
+  (swap! state assoc-in [:input :editor-mode] value))
 
-;; =============================================================================
-;; Mutations
-
-(defmulti mutate om/dispatch)
-
-(defmethod mutate 'input/save [{:keys [state]} _ {:keys [value]}]
-  {:action #(swap! state assoc-in [:input :input] value)})
-
-(defn clean-print-box [state]
+(defn clean-print-box! [state]
   (swap! state assoc :evaluation-js ""))
 
-(defn append-print-box [state & args]
+(defn append-print-box! [state & args]
   (swap! state update :evaluation-js #(str % (apply str args))))
 
-(defmethod mutate 'editor/consume-mode [{:keys [state]} _ {:keys [value]}]
-  {:action (fn []
-             (swap! state update-in [:input :editor-modes] rest)
-             (swap! state assoc-in [:input :editor-mode] value))})
-
-(defmethod mutate 'editor/set-mode [{:keys [state]} _ {:keys [value]}]
-  {:action (fn []
-             (swap! state assoc-in [:input :editor-mode] value))})
-
-(defmethod mutate 'clj/eval-and-compile [{:keys [state]} _ {:keys [value]}]
-  {:action #(go
-              (clean-print-box state)
+(defn eval-and-compile! [state value]
+  {:action (go
+              (clean-print-box! state)
               (binding [*print-newline* true
-                        *print-fn* (partial append-print-box state)]
+                        *print-fn* (partial append-print-box! state)]
                 (swap! state assoc
                        :evaluation-clj (<! (eval-clj value))
                        ;; we need to prevent from evaluation and compilation to occurs in paralllel - as it would load twice the code of the deps

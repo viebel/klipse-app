@@ -1,19 +1,19 @@
 (ns klipse.ui.editors.cljs
   (:require-macros
-   [cljs.core.async.macros :refer [go]]
-   [gadjett.core :refer [dbg]])
+   [cljs.core.async.macros :refer [go]])
   (:require
    [cljs.core.async :refer [<!]]
-   [cljs.reader :refer [read-string]]
+   [reagent.core :as r]
    [clojure.string :as string :refer [blank?]]
    [parinfer-codemirror.editor :refer [parinferize-and-sync!]]
    [klipse-clj.lang.clojure :refer [completions]]
    [klipse.common.registry :refer [codemirror-keymap-src scripts-src]]
-   [klipse.ui.editors.editor :refer [trigger-autocomplete current-token get-selection-when-selected get-value set-value replace-element-by-editor replace-id-by-editor]]
+   [klipse.ui.editors.editor :refer [trigger-autocomplete current-token get-selection-when-selected get-value replace-element-by-editor replace-id-by-editor]]
    [klipse.ui.editors.common :refer [handle-events]]
-   [klipse.utils :refer [url-parameters load-scripts-mem]]
-   [om.next :as om :refer-macros [defui]]
-   [om.dom :as dom]))
+   [klipse.utils :refer [load-scripts-mem]]
+   [klipse.control.parser :refer [eval-and-compile! set-editor-mode!
+                                  save-editor-input! consume-editor-mode!]]
+   [klipse.control.control :refer [app-state]]))
 
 (def config-editor
   {:lineNumbers true
@@ -23,43 +23,42 @@
    :mode "clojure"
    :scrollbarStyle "overlay"})
 
+(def editor-id "code-cljs")
+(def my-editor (atom nil))
+
 (def placeholder-editor
   (str
    ";; Write your clojurescript expression \n"
    ";; and press Ctrl-Enter or wait for 3 sec to experience the magic..."))
 
-(defn save-input [component s]
+(defn save-input! [s]
   (when-not (blank? s)
-    (om/transact! component
-                  [`(input/save     {:value ~s})
-                   :input])))
+    (save-editor-input! app-state s)))
 
-(defn process-input [component s]
+(defn process-input! [s]
   (when-not (blank? s)
-    (om/transact! component
-                  [`(clj/eval-and-compile     {:value ~s})
-                   :input])))
+    (eval-and-compile! app-state s)))
 
-(defn show-completions [component s]
+(defn show-completions [s]
   (js/console.log (clj->js (completions s))))
 
-(defn handle-cm-events [component editor]
+(defn handle-cm-events [editor]
   (set! js/CCC editor)
   (handle-events editor
                  {:idle-msec 3000
-                  :on-change #(save-input component (get-value editor))
+                  :on-change #(save-input!  (get-value editor))
                   :on-completion #(trigger-autocomplete editor (completions (current-token editor)))
-                  :on-should-eval #(process-input component (get-selection-when-selected editor))}))
+                  :on-should-eval #(process-input! (get-selection-when-selected editor))}))
 
-(defmulti use-editor-mode! (fn [mode _]  mode))
+(defmulti use-editor-mode! (fn [mode]  mode))
 
-(defn replace-editor! [component & [cm-options]]
-  (let [editor (om/get-state component :editor)
+(defn replace-editor! [& [cm-options]]
+  (let [editor @my-editor
         editor-wrapper (.getWrapperElement editor)
         value (get-value editor)
         new-editor (replace-element-by-editor editor-wrapper value (merge config-editor cm-options))]
-    (om/update-state! component assoc :editor new-editor)
-    (handle-cm-events component new-editor)))
+    (reset! my-editor new-editor)
+    (handle-cm-events new-editor)))
 
 (defn load-external-scripts [scripts]
   (go
@@ -79,75 +78,67 @@
     (set! (.-id wrapper) (str "cm-" "element-id"))
     (parinferize-and-sync! editor key- parinfer-mode (get-value editor))))
 
-(defn use-parinfer! [component indent-or-paren]
-  (parinferize-editor! (replace-editor! component) indent-or-paren)
+(defn use-parinfer! [indent-or-paren]
+  (parinferize-editor! (replace-editor!) indent-or-paren)
   (let [mode (case indent-or-paren
                :indent :parinfer-indent
                :paren :parinfer-paren)]
-    (om/transact! component [`(editor/consume-mode {:value ~mode})
-                             :input])))
+    (consume-editor-mode! app-state mode)))
 
-(defmethod use-editor-mode! :parinfer-indent [_ component]
-  (use-parinfer! component :indent))
+(defmethod use-editor-mode! :parinfer-indent [_]
+  (use-parinfer! :indent))
 
-(defmethod use-editor-mode! :parinfer-paren [_ component]
-  (use-parinfer! component :paren))
+(defmethod use-editor-mode! :parinfer-paren [_]
+  (use-parinfer!  :paren))
 
-(defmethod use-editor-mode! :paredit [_ component]
-  (om/transact! component ['(editor/consume-mode {:value :loading})
-                           :input])
+(defmethod use-editor-mode! :paredit [_]
+  (consume-editor-mode! app-state :loading)
   (go
-    (let [[status err] (<! (load-external-scripts [(codemirror-keymap-src "emacs") (scripts-src "subpar.js") (scripts-src "subpar.core.js") ]))]
+    (let [[status err] (<! (load-external-scripts [(codemirror-keymap-src "emacs") (scripts-src "subpar.js") (scripts-src "subpar.core.js")]))]
       (if (= :ok status)
         (do
-          (replace-editor! component {:keyMap "subpar"})
-          (om/transact! component ['(editor/set-mode {:value :paredit})
-                                   :input]))
+          (replace-editor! {:keyMap "subpar"})
+          (set-editor-mode! app-state :paredit))
         (do
-          (om/transact! component ['(editor/set-mode {:value :error})
-                                   :input])
+          (set-editor-mode! app-state :error)
           (js/console.error "cannot load paredit scripts:" err))))))
 
-(defmethod use-editor-mode! :regular [_ component]
-  (let [editor (replace-editor! component)]
-    (om/transact! component ['(editor/consume-mode {:value :regular})
-                             :input])
+(defmethod use-editor-mode! :regular [_]
+  (let [editor (replace-editor!)]
+    (consume-editor-mode! app-state :regular)
     editor))
 
-(defn switch-editor-mode [component]
-  (let [editor-modes (get-in (om/props component) [:input :editor-modes])]
-    (use-editor-mode! (first editor-modes) component)))
+(defn switch-editor-mode! []
+  (let [editor-modes (get-in @app-state [:input :editor-modes])]
+    (use-editor-mode! (first editor-modes))))
 
-(defn init-editor [component]
-  (replace-id-by-editor "code-cljs" config-editor))
+(defn init-editor! [id]
+  (replace-id-by-editor id config-editor))
 
-(defui Cljs-editor
-  static om/IQuery
-  (query [this]
-         [:input])
+(defn on-component-mount []
+  (reset! my-editor (init-editor! editor-id))
+  (switch-editor-mode!)
+  (process-input! (get-value @my-editor)))
 
-  Object
-  (componentDidMount [this]
-                     (om/set-state! this {:editor (init-editor this)})
-                     (let [new-editor (switch-editor-mode this)]
-                       (process-input this (get-value new-editor))))
+(defn render []
+  (let [{{:keys [input editor-mode]} :input} @app-state
+        editor-class (case editor-mode
+                       :loading "mode-loading"
+                       :error "mode-error"
+                       :regular "mode-regular"
+                       :paredit "mode-paredit"
+                       :parinfer-paren "mode-parinfer-paren"
+                       :parinfer-indent "mode-parinfer-indent"
+                       "mode-regular")]
+    [:section {:className "cljs-editor"}
+     [:div {:autoFocus true
+            :id editor-id
+            :placeholder placeholder-editor}
+      input]
+     [:div {:onClick switch-editor-mode!
+            :className (str "editor-logo" " " editor-class)}]]))
 
-  (render [this]
-          (let [{:keys [input editor-mode] :or {input ""}} (:input (om/props this))
-                editor-class (case editor-mode
-                               :loading "mode-loading"
-                               :error "mode-error"
-                               :regular "mode-regular"
-                               :paredit "mode-paredit"
-                               :parinfer-paren "mode-parinfer-paren"
-                               :parinfer-indent "mode-parinfer-indent"
-                               "mode-regular")]
-            (dom/section #js {:className "cljs-editor"}
-                         (dom/div #js {:autoFocus true
-                                       :id "code-cljs"
-                                       :placeholder placeholder-editor}
-                                  input)
-                         (dom/div #js {:onClick (partial switch-editor-mode this)
-                                       :className (str "editor-logo" " " editor-class)})))))
-
-(def cljs-editor (om/factory Cljs-editor))
+(defn cljs-editor []
+  (r/create-class
+   {:component-did-mount on-component-mount
+    :reagent-render render}))

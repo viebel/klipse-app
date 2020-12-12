@@ -208,3 +208,6 @@ section.js-textarea textarea {
     background-image: url(../../img/printer.png);
 }
 
+.totally-hidden {
+  display: none;
+}

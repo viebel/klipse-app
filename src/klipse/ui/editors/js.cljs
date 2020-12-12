@@ -1,12 +1,12 @@
 (ns klipse.ui.editors.js
   (:require
-    [klipse.ui.editors.editor :as editor] 
-    [om.next :as om :refer-macros [defui]]
-    [om.dom :as dom]))
+   [reagent.core :as r]
+   [klipse.control.control :refer [app-state]]
+   [klipse.ui.editors.editor :as editor]))
 
-(def config-editor 
+(def config-editor
   {:lineNumbers true
-   :matchBrackets true 
+   :matchBrackets true
    :lineWrapping true
    :autoCloseBrackets true
    :mode "javascript"
@@ -16,32 +16,32 @@
 (def placeholder-editor
   ";; Press Ctrl-Enter or wait for 3 sec to transpile...")
 
-(defn init-editor [compiler]
-  (editor/create "code-js" config-editor))
+(def editor-id "code-js")
 
-(defui Js-editor
-  
-    static om/IQuery
-    (query [this] 
-      '[:compilation])
-  
-    Object
-    
-    (componentDidUpdate [this prev-props prev-state]
-      (let [[status result] (:compilation (om/props this))
-            editor-js (om/get-state this :editor)]
-        (when editor-js
-          (->>
-            (if (= :ok status) result (str result))
-            (editor/set-value editor-js)
-            (editor/do-indent)))))
+(defn display-editor? [code-layout]
+  (#{:global :js-only} code-layout))
 
-    (componentDidMount [this]
-      (om/set-state! this {:editor (init-editor this)}))
+(defn init-editor! [id]
+  (editor/create id config-editor))
 
-    (render [this]
-      (dom/section #js {:className "js-editor"}
-        (dom/textarea #js {:id "code-js"
-                           :placeholder placeholder-editor}))))
+(def the-editor (atom nil))
 
-(def js-editor (om/factory Js-editor))
+(defn on-component-update [_props _prev-props _prev-state]
+  (when (display-editor? (:code-layout @app-state))
+    (let [[status result] (:compilation @app-state)]
+      (->>
+       (if (= :ok status) result (str result))
+       (editor/set-value @the-editor)
+       (editor/do-indent)))))
+
+(defn js-editor []
+  (r/create-class
+   {:component-did-mount (fn []
+                           (reset! the-editor (init-editor! editor-id)))
+    :component-did-update on-component-update
+    :reagent-render (fn []
+                      [:section {:className "js-editor"}
+                       [:div {:className "totally-hidden"} ;; refers app-state ratom so that comp is re-rendered
+                        (:code-layout @app-state)]
+                       [:textarea {:id editor-id
+                                   :placeholder placeholder-editor}]])}))
