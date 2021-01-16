@@ -9,6 +9,14 @@
    [cljs.core.async :refer [timeout <! chan put!]]
    [cemerick.url :refer [url]]))
 
+(defn show-url
+[url]
+  (
+    (js/alert url)
+    (print url)
+  )
+)
+
 (defn fetch-shortened-url
   "Calls is.gd with the current URL and returns
   a shortened version for the user to copy."
@@ -17,17 +25,11 @@
       "https://cors-anywhere.herokuapp.com/https://is.gd/create.php"
       {:with-credentials? false
       :headers {"accept" "application/json" "content-type" "application/json"}
-      :query-params {:format "simple" :url "https://google.com"}}))]
+      :query-params {:format "simple" :url current}}))]
       (if-not (= (:status response) 200)
-        (
-          (js/alert current)
-          (print current)
-        )
+        (show-url current)
         (let [short-link (:body response)]
-          (
-            (js/alert short-link)
-            (print short-link)
-          )
+          (show-url short-link)
         )
       )
   ))
